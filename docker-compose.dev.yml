@@ -1,0 +1,17 @@
+services:
+  bot:
+    volumes:
+      - ./:/app
+    environment:
+      DEBUG: "true"
+      LOG_LEVEL: DEBUG
+
+  adminer:
+    image: adminer:latest
+    restart: unless-stopped
+    ports:
+      - "8080:8080"
+    depends_on:
+      - postgres
+    networks:
+      - bot-net

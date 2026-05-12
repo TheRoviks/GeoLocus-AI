@@ -95,10 +95,6 @@ class SchedulerService:
                     user_id=rem.user_id,
                     user_missing=user is None,
                 )
-                # For recurring reminders we must keep the series alive even
-                # while the user is inactive (blocked the bot, etc.), so that
-                # reactivation does not silently drop their schedule. Spawn
-                # the next occurrence and let the scheduler hold it.
                 next_rem_id: int | None = None
                 next_rem_when: datetime | None = None
                 if user is not None:

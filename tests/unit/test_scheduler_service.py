@@ -7,8 +7,6 @@ import pytest_asyncio
 from services.reminder_service import ReminderService
 from services.scheduler_service import SchedulerService
 
-UTC = UTC
-
 
 def _mock_bot() -> MagicMock:
     bot = MagicMock()
@@ -121,6 +119,31 @@ async def test_fire_quiet_hours_defers(session_factory, user, session):
         async with session_factory() as s:
             r = await ReminderService(s).get_by_id(rem.id)
             assert r.is_done is False
+    finally:
+        await sched.shutdown()
+
+
+@pytest.mark.asyncio
+async def test_fire_inactive_user_marks_done_no_send(session_factory, user, session):
+    user.is_active = False
+    session.add(user)
+    await session.commit()
+
+    async with session_factory() as s:
+        rem = await ReminderService(s).create(
+            user_id=user.id, text="x", parsed_text="x",
+            remind_at=datetime(2030, 1, 1, tzinfo=UTC),
+        )
+    bot = _mock_bot()
+    sched = SchedulerService(bot, session_factory)
+    await sched.start()
+    try:
+        await sched._fire(rem.id)
+        bot.send_message.assert_not_called()
+        async with session_factory() as s:
+            refreshed = await ReminderService(s).get_by_id(rem.id)
+            assert refreshed.is_done is True
+            assert refreshed.notified_at is None
     finally:
         await sched.shutdown()
 

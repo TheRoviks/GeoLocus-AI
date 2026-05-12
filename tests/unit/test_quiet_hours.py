@@ -2,8 +2,6 @@ from datetime import UTC, datetime, time
 
 from services.quiet_hours import adjust_for_quiet_hours
 
-UTC = UTC
-
 
 def test_outside_quiet_returns_as_is():
     when = datetime(2026, 5, 8, 12, 0, tzinfo=UTC)  # 15:00 MSK
@@ -37,3 +35,24 @@ def test_non_wrap_window():
     when = datetime(2026, 5, 8, 11, 0, tzinfo=UTC)  # 14:00 MSK
     out = adjust_for_quiet_hours(when, time(13, 0), time(15, 0), "Europe/Moscow")
     assert out == datetime(2026, 5, 8, 12, 0, tzinfo=UTC)  # 15:00 MSK
+
+
+def test_midnight_as_boundary_start():
+    # window 00:00 → 07:00 MSK. when = 00:30 MSK → shifts to 07:00 MSK
+    # 00:30 MSK = 2026-05-08 21:30 UTC (prev day)
+    when = datetime(2026, 5, 7, 21, 30, tzinfo=UTC)
+    out = adjust_for_quiet_hours(when, time(0, 0), time(7, 0), "Europe/Moscow")
+    # 07:00 MSK on 2026-05-08 = 04:00 UTC
+    assert out == datetime(2026, 5, 8, 4, 0, tzinfo=UTC)
+
+
+def test_wrap_midnight_23_to_08_inside():
+    # 23:30 local is inside 23:00→08:00; should shift to next morning 08:00
+    # Use UTC+0 (London) for simplicity: MSK = UTC+3
+    # 00:30 UTC = 03:30 MSK; not in window — use UTC directly
+    # 21:30 UTC = 00:30+3 = 03:30 MSK → not in 23:00-08:00
+    # Let's use Europe/Moscow: 23:30 MSK = 20:30 UTC
+    when = datetime(2026, 5, 8, 20, 30, tzinfo=UTC)  # 23:30 MSK
+    out = adjust_for_quiet_hours(when, time(23, 0), time(8, 0), "Europe/Moscow")
+    # Must shift to 08:00 MSK next day = 05:00 UTC 2026-05-09
+    assert out == datetime(2026, 5, 9, 5, 0, tzinfo=UTC)

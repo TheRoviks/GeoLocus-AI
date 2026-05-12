@@ -8,11 +8,11 @@ from bot.formatting import fmt_recurring, fmt_when
 from bot.handlers._callbacks import parse_callback_id
 from bot.keyboards.inline import reminder_actions
 from core import strings
-from core.exceptions import AIParseError, InvalidRecurrenceError, ReminderNotFoundError
+from core.exceptions import AIParseError
 from core.logger import get_logger
 from models.user import User
 from services.ai_service import AIService
-from services.recurrence import next_occurrence
+from services.quiet_hours import adjust_for_quiet_hours
 from services.reminder_service import ReminderService
 from services.scheduler_service import SchedulerService
 
@@ -83,7 +83,7 @@ async def on_cancel(
     if ok:
         scheduler.cancel(rid)
         await cb.answer(strings.REMINDER_DELETED)
-        if cb.message is not None:
+        if isinstance(cb.message, Message):
             await cb.message.edit_reply_markup(reply_markup=None)
     else:
         await cb.answer(strings.REMINDER_NOT_FOUND, show_alert=True)
@@ -107,37 +107,23 @@ async def on_done(
     async with session_factory() as session:
         svc = ReminderService(session)
         rem = await svc.get_by_id(rid)
-        if rem is None or rem.is_deleted or rem.user_id != user.id:
+        if rem is None or rem.is_deleted or rem.is_done or rem.user_id != user.id:
             await cb.answer(strings.REMINDER_NOT_FOUND, show_alert=True)
             return
-        try:
-            await svc.mark_done(rid)
-        except ReminderNotFoundError:
-            await cb.answer(strings.REMINDER_NOT_FOUND, show_alert=True)
-            return
+        rem.is_done = True
+        rem.notified_at = datetime.now(UTC)
+        await session.commit()
 
-        if rem.is_recurring and rem.recurrence_rule:
-            try:
-                next_at = next_occurrence(rem.recurrence_rule, rem.remind_at)
-            except InvalidRecurrenceError as exc:
-                log.error("bad_recurrence_on_done", id=rid, error=str(exc))
-            else:
-                new_rem = await svc.create(
-                    user_id=rem.user_id,
-                    text=rem.text,
-                    parsed_text=rem.parsed_text,
-                    remind_at=next_at,
-                    is_recurring=True,
-                    recurrence_rule=rem.recurrence_rule,
-                )
-                next_rem_id = new_rem.id
-                next_rem_when = new_rem.remind_at
+        new_rem = await svc.create_next_recurrence(rem)
+        if new_rem is not None:
+            next_rem_id = new_rem.id
+            next_rem_when = new_rem.remind_at
 
     if next_rem_id is not None and next_rem_when is not None:
         scheduler.reschedule(next_rem_id, next_rem_when)
 
     await cb.answer(strings.REMINDER_DONE)
-    if cb.message is not None:
+    if isinstance(cb.message, Message):
         await cb.message.edit_reply_markup(reply_markup=None)
 
 
@@ -154,6 +140,12 @@ async def on_snooze(
         return
 
     new_time = datetime.now(UTC) + timedelta(minutes=10)
+    new_time = adjust_for_quiet_hours(
+        new_time,
+        user.quiet_hours_start,
+        user.quiet_hours_end,
+        user.timezone,
+    )
     async with session_factory() as session:
         svc = ReminderService(session)
         rem = await svc.get_by_id(rid)
@@ -164,5 +156,5 @@ async def on_snooze(
 
     scheduler.reschedule(rid, rem.remind_at)
     await cb.answer(strings.REMINDER_SNOOZED)
-    if cb.message is not None:
+    if isinstance(cb.message, Message):
         await cb.message.edit_reply_markup(reply_markup=None)

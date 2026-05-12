@@ -1,5 +1,6 @@
 import logging
 import sys
+from typing import Any
 
 import structlog
 
@@ -13,7 +14,7 @@ def configure_logging(level: str = "INFO", debug: bool = False) -> None:
         level=log_level,
     )
 
-    shared_processors: list[structlog.types.Processor] = [
+    shared_processors: list[Any] = [
         structlog.contextvars.merge_contextvars,
         structlog.stdlib.add_log_level,
         structlog.stdlib.add_logger_name,
@@ -22,7 +23,7 @@ def configure_logging(level: str = "INFO", debug: bool = False) -> None:
         structlog.processors.format_exc_info,
     ]
 
-    renderer: structlog.types.Processor
+    renderer: Any
     if debug:
         renderer = structlog.dev.ConsoleRenderer(colors=True)
     else:
@@ -37,4 +38,4 @@ def configure_logging(level: str = "INFO", debug: bool = False) -> None:
 
 
 def get_logger(name: str | None = None) -> structlog.stdlib.BoundLogger:
-    return structlog.get_logger(name)  # type: ignore[no-any-return]
+    return structlog.get_logger(name)

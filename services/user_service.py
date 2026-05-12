@@ -3,6 +3,7 @@ from datetime import time
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from core.exceptions import BotError
 from models.user import User
 
 
@@ -48,14 +49,14 @@ class UserService:
     async def update_timezone(self, user_id: int, tz: str) -> None:
         user = await self._s.get(User, user_id)
         if user is None:
-            return
+            raise BotError(f"User {user_id} not found")
         user.timezone = tz
         await self._s.commit()
 
     async def update_quiet_hours(self, user_id: int, start: time, end: time) -> None:
         user = await self._s.get(User, user_id)
         if user is None:
-            return
+            raise BotError(f"User {user_id} not found")
         user.quiet_hours_start = start
         user.quiet_hours_end = end
         await self._s.commit()

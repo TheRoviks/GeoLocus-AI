@@ -37,3 +37,13 @@ postgres-data/
 *.sqlite
 *.sqlite3
 logs/
+backups/
+*.sql.gz
+
+# Не наше
+octogent/
+.octogent/
+.claude/
+docs/
+tasks/
+CLAUDE.md

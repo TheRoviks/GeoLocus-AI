@@ -13,12 +13,12 @@ from services.scheduler_service import SchedulerService
 router = Router(name="list")
 
 
-def _build_list_kb(items, page: int, total_pages: int) -> InlineKeyboardMarkup:  # type: ignore[no-untyped-def]
+def _build_list_kb(items, page: int, total_pages: int) -> InlineKeyboardMarkup:
     rows: list[list[InlineKeyboardButton]] = [
         [
             InlineKeyboardButton(
                 text=f"🗑 {idx}",
-                callback_data=f"list:del:{r.id}",
+                callback_data=f"list:del:{page}:{r.id}",
             )
         ]
         for idx, r in enumerate(items, start=1)
@@ -34,7 +34,7 @@ def _build_list_kb(items, page: int, total_pages: int) -> InlineKeyboardMarkup: 
     return InlineKeyboardMarkup(inline_keyboard=rows)
 
 
-def _render_list(items, page: int, total: int, user_tz: str) -> tuple[str, InlineKeyboardMarkup]:  # type: ignore[no-untyped-def]
+def _render_list(items, page: int, total: int, user_tz: str) -> tuple[str, InlineKeyboardMarkup]:
     total_pages = max((total + PER_PAGE - 1) // PER_PAGE, 1)
     parts = [strings.LIST_HEADER.format(page=page, total_pages=total_pages)]
     for idx, r in enumerate(items, start=1):
@@ -90,27 +90,33 @@ async def on_delete(
     session_factory: async_sessionmaker,
     scheduler: SchedulerService,
 ) -> None:
-    rid = parse_callback_id(cb.data, "list:del:")
-    if rid is None:
+    payload = (cb.data or "")[len("list:del:"):]
+    try:
+        page_str, rid_str = payload.split(":", 1)
+        page = int(page_str)
+        rid = int(rid_str)
+        if page < 1 or rid < 1:
+            raise ValueError
+    except ValueError:
         await cb.answer(strings.CALLBACK_INVALID, show_alert=True)
         return
     async with session_factory() as session:
         svc = ReminderService(session)
         ok = await svc.soft_delete(rid, user.id)
-    if ok:
+        if not ok:
+            await cb.answer(strings.REMINDER_NOT_FOUND, show_alert=True)
+            return
         scheduler.cancel(rid)
         await cb.answer(strings.REMINDER_DELETED)
-    else:
-        await cb.answer(strings.REMINDER_NOT_FOUND, show_alert=True)
-        return
-    # refresh list
-    async with session_factory() as session:
-        svc = ReminderService(session)
-        items, total = await svc.get_active_for_user(user.id, page=1)
+        items, total = await svc.get_active_for_user(user.id, page=page)
+        if not items and total > 0:
+            total_pages = max((total + PER_PAGE - 1) // PER_PAGE, 1)
+            page = min(page, total_pages)
+            items, total = await svc.get_active_for_user(user.id, page=page)
     if total == 0:
         await cb.message.edit_text(strings.EMPTY_LIST)  # type: ignore[union-attr]
         return
-    text, kb = _render_list(items, 1, total, user.timezone)
+    text, kb = _render_list(items, page, total, user.timezone)
     await cb.message.edit_text(text, reply_markup=kb, parse_mode="HTML")  # type: ignore[union-attr]
 
 

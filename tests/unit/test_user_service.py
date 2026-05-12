@@ -45,7 +45,10 @@ async def test_update_timezone_and_quiet(session, user):
 
 
 @pytest.mark.asyncio
-async def test_update_missing_user_noop(session):
+async def test_update_missing_user_raises(session):
+    import pytest as _pytest
+
+    from core.exceptions import BotError
     svc = UserService(session)
-    # should not raise
-    await svc.update_timezone(99999, "UTC")
+    with _pytest.raises(BotError, match="User 99999 not found"):
+        await svc.update_timezone(99999, "UTC")

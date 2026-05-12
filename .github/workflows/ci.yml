@@ -45,7 +45,7 @@ jobs:
           cache: pip
       - run: pip install -r requirements-dev.txt
       - run: alembic upgrade head
-      - run: pytest
+      - run: pytest --cov=services --cov-report=term-missing --cov-fail-under=80
 
   build:
     runs-on: ubuntu-latest
@@ -60,3 +60,23 @@ jobs:
           tags: smart-reminder-bot:ci
           cache-from: type=gha
           cache-to: type=gha,mode=max
+
+  deploy:
+    runs-on: ubuntu-latest
+    needs: [lint, test, build]
+    if: github.ref == 'refs/heads/main' && github.event_name == 'push'
+    environment: production
+    steps:
+      - name: Deploy via SSH
+        uses: appleboy/ssh-action@v1.0.3
+        with:
+          host: ${{ secrets.SERVER_HOST }}
+          username: ${{ secrets.SERVER_USER }}
+          key: ${{ secrets.SSH_PRIVATE_KEY }}
+          envs: BOT_TOKEN,ALERT_CHAT_ID
+          script: |
+            cd /opt/smart-bot
+            ./scripts/deploy.sh
+        env:
+          BOT_TOKEN: ${{ secrets.BOT_TOKEN }}
+          ALERT_CHAT_ID: ${{ secrets.ALERT_CHAT_ID }}

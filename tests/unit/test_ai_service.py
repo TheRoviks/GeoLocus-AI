@@ -119,3 +119,34 @@ async def test_parse_api_error_propagates(ai_service, monkeypatch):
     monkeypatch.setattr(ai_service._client, "post", post)
     with pytest.raises(AIParseError):
         await ai_service.parse("текст", "Europe/Moscow")
+
+
+@pytest.mark.asyncio
+async def test_parse_too_long_raises(ai_service):
+    with pytest.raises(AIParseError, match="too long"):
+        await ai_service.parse("а" * 1001, "Europe/Moscow")
+
+
+@pytest.mark.asyncio
+async def test_parse_api_error_sleeps_before_retry(ai_service, monkeypatch):
+    import asyncio
+
+    slept: list[float] = []
+
+    async def fake_sleep(t: float) -> None:
+        slept.append(t)
+
+    monkeypatch.setattr(asyncio, "sleep", fake_sleep)
+
+    request = httpx.Request("POST", "https://example.com")
+    post = AsyncMock(
+        side_effect=[
+            httpx.ConnectError("boom", request=request),
+            httpx.ConnectError("boom", request=request),
+        ]
+    )
+    monkeypatch.setattr(ai_service._client, "post", post)
+    with pytest.raises(AIParseError):
+        await ai_service.parse("текст", "Europe/Moscow")
+    assert len(slept) == 1
+    assert slept[0] == 1.5

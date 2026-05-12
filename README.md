@@ -2,7 +2,7 @@
 
 [![Python 3.12](https://img.shields.io/badge/python-3.12-blue)](https://www.python.org/)
 [![License: MIT](https://img.shields.io/badge/License-MIT-green.svg)](LICENSE)
-[![CI](https://img.shields.io/badge/CI-pending-lightgrey)](.github/workflows/ci.yml)
+[![CI](https://github.com/TheRoviks/GeoLocus-AI/actions/workflows/ci.yml/badge.svg)](https://github.com/TheRoviks/GeoLocus-AI/actions/workflows/ci.yml)
 
 Telegram-бот, который понимает напоминания на естественном языке через DeepSeek AI и шлёт их точно в срок.
 
@@ -40,6 +40,9 @@ docker compose up
 | `DEEPSEEK_MODEL` | Имя модели | `deepseek-chat` |
 | `DEEPSEEK_BASE_URL` | API endpoint | `https://api.deepseek.com` |
 | `DATABASE_URL` | DSN Postgres | (из compose) |
+| `POSTGRES_USER` | Пользователь Postgres (только compose) | `postgres` |
+| `POSTGRES_PASSWORD` | Пароль Postgres (только compose) | — |
+| `POSTGRES_DB` | Имя БД (только compose) | `reminders` |
 | `DEFAULT_TIMEZONE` | TZ по умолчанию | `Europe/Moscow` |
 | `DEBUG` | Debug-логи + echo SQL | `false` |
 | `LOG_LEVEL` | `DEBUG`/`INFO`/`WARNING`/`ERROR` | `INFO` |
@@ -78,6 +81,14 @@ pytest
 ```
 
 Покрытие тестами `services/` ≥ 80% (фейлится в CI если ниже).
+
+## Contributing
+
+PR приветствуются. Перед отправкой:
+
+- `pytest` должен быть зелёным
+- `ruff check .` без ошибок
+- `mypy services models core` без ошибок
 
 ## Лицензия
 

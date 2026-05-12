@@ -11,6 +11,11 @@ TZ_PRESETS: list[tuple[str, str]] = [
     ("Якутск (Asia/Yakutsk)", "Asia/Yakutsk"),
     ("Владивосток (Asia/Vladivostok)", "Asia/Vladivostok"),
     ("UTC", "UTC"),
+    ("Алматы (Asia/Almaty)", "Asia/Almaty"),
+    ("Ташкент (Asia/Tashkent)", "Asia/Tashkent"),
+    ("Минск (Europe/Minsk)", "Europe/Minsk"),
+    ("Киев (Europe/Kiev)", "Europe/Kiev"),
+    ("Берлин (Europe/Berlin)", "Europe/Berlin"),
 ]
 
 QUIET_PRESETS: list[tuple[str, str]] = [
@@ -30,25 +35,6 @@ def reminder_actions(reminder_id: int) -> InlineKeyboardMarkup:
         ]
     )
 
-
-def list_item_actions(reminder_id: int) -> InlineKeyboardMarkup:
-    return InlineKeyboardMarkup(
-        inline_keyboard=[
-            [InlineKeyboardButton(text="🗑 Удалить", callback_data=f"list:del:{reminder_id}")]
-        ]
-    )
-
-
-def pagination(page: int, total_pages: int) -> InlineKeyboardMarkup:
-    row: list[InlineKeyboardButton] = []
-    if page > 1:
-        row.append(InlineKeyboardButton(text="←", callback_data=f"list:page:{page - 1}"))
-    row.append(
-        InlineKeyboardButton(text=f"{page}/{total_pages}", callback_data="noop")
-    )
-    if page < total_pages:
-        row.append(InlineKeyboardButton(text="→", callback_data=f"list:page:{page + 1}"))
-    return InlineKeyboardMarkup(inline_keyboard=[row])
 
 
 def settings_menu() -> InlineKeyboardMarkup:
@@ -76,3 +62,14 @@ def quiet_kb() -> InlineKeyboardMarkup:
     ]
     rows.append([InlineKeyboardButton(text="« Назад", callback_data="settings:back")])
     return InlineKeyboardMarkup(inline_keyboard=rows)
+
+
+def reminder_done_kb(reminder_id: int) -> InlineKeyboardMarkup:
+    return InlineKeyboardMarkup(
+        inline_keyboard=[
+            [
+                InlineKeyboardButton(text="✅ Готово", callback_data=f"rem:done:{reminder_id}"),
+                InlineKeyboardButton(text="⏰ +10 мин", callback_data=f"rem:snooze:{reminder_id}"),
+            ]
+        ]
+    )

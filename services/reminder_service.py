@@ -1,4 +1,4 @@
-from datetime import UTC, datetime
+from datetime import UTC, datetime, timedelta
 
 from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -78,6 +78,25 @@ class ReminderService:
         await self._s.commit()
         return rem
 
+    async def create_next_recurrence(self, rem: "Reminder") -> "Reminder | None":
+        from core.exceptions import InvalidRecurrenceError
+        from services.recurrence import next_occurrence
+
+        if not rem.is_recurring or not rem.recurrence_rule:
+            return None
+        try:
+            next_at = next_occurrence(rem.recurrence_rule, rem.remind_at)
+        except InvalidRecurrenceError:
+            return None
+        return await self.create(
+            user_id=rem.user_id,
+            text=rem.text,
+            parsed_text=rem.parsed_text,
+            remind_at=next_at,
+            is_recurring=True,
+            recurrence_rule=rem.recurrence_rule,
+        )
+
     async def reschedule(self, reminder_id: int, new_time: datetime) -> Reminder:
         rem = await self.get_by_id(reminder_id)
         if rem is None:
@@ -88,11 +107,11 @@ class ReminderService:
         return rem
 
     async def get_due_for_restore(self) -> list[Reminder]:
-        now = datetime.now(UTC)
+        horizon = datetime.now(UTC) + timedelta(hours=24)
         stmt = select(Reminder).where(
             Reminder.is_done.is_(False),
             Reminder.is_deleted.is_(False),
-            Reminder.remind_at >= now,
+            Reminder.remind_at <= horizon,
         )
         return list((await self._s.execute(stmt)).scalars().all())
 

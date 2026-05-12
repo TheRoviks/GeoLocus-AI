@@ -8,11 +8,6 @@ def adjust_for_quiet_hours(
     quiet_end: time,
     user_tz: str,
 ) -> datetime:
-    """If `when_utc` falls inside the user's quiet hours window, shift to quiet_end.
-
-    Returns the original datetime (UTC) if outside quiet hours.
-    Quiet windows can wrap midnight (e.g. 23:00 → 08:00).
-    """
     tz = ZoneInfo(user_tz)
     local = when_utc.astimezone(tz)
     local_t = local.time()
@@ -29,7 +24,6 @@ def adjust_for_quiet_hours(
 
     target_date = local.date()
     if quiet_start > quiet_end and local_t >= quiet_start:
-        # crossed midnight, end is tomorrow
         target_date = (local + timedelta(days=1)).date()
 
     target_local = datetime.combine(target_date, quiet_end, tzinfo=tz)

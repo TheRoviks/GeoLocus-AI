@@ -2,7 +2,7 @@ from collections.abc import Awaitable, Callable
 from typing import Any
 
 from aiogram import BaseMiddleware
-from aiogram.types import Message, TelegramObject
+from aiogram.types import CallbackQuery, Message, TelegramObject
 from cachetools import TTLCache
 
 
@@ -16,9 +16,11 @@ class ThrottlingMiddleware(BaseMiddleware):
         event: TelegramObject,
         data: dict[str, Any],
     ) -> Any:
-        if isinstance(event, Message) and event.from_user is not None:
+        if isinstance(event, (Message, CallbackQuery)) and event.from_user is not None:
             uid = event.from_user.id
             if uid in self._cache:
+                if isinstance(event, CallbackQuery):
+                    await event.answer()
                 return None
             self._cache[uid] = True
         return await handler(event, data)

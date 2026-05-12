@@ -66,3 +66,16 @@ def make_reminder(user):
         defaults.update(kw)
         return Reminder(**defaults)
     return _make
+
+
+def test_menu_texts_match_reply_keyboard():
+    from bot.handlers.reminders import MENU_TEXTS
+    from bot.keyboards.reply import main_menu
+
+    kb = main_menu()
+    for row in kb.keyboard:
+        for btn in row:
+            assert btn.text in MENU_TEXTS, (
+                f"MISMATCH: reply keyboard {btn.text!r} "
+                f"not found in MENU_TEXTS"
+            )

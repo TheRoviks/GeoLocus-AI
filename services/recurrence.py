@@ -1,21 +1,27 @@
 from calendar import monthrange
-from datetime import datetime, timedelta
+from datetime import UTC, datetime, timedelta
 
 from core.exceptions import InvalidRecurrenceError
 
-WEEKDAYS: dict[str, int] = {
+
+def _safe_replace(base: datetime, *, year: int, month: int, day: int) -> datetime:
+    tz = base.tzinfo
+    if tz is None or tz is UTC or type(tz).__name__ == "timezone":
+        return base.replace(year=year, month=month, day=day)
+    local = datetime(
+        year, month, day,
+        base.hour, base.minute, base.second, base.microsecond,
+        tzinfo=tz, fold=0,
+    )
+    return local.astimezone(tz)
+
+
+WEEKDAYS = {
     "MON": 0, "TUE": 1, "WED": 2, "THU": 3, "FRI": 4, "SAT": 5, "SUN": 6,
 }
 
 
 def next_occurrence(rule: str, after: datetime) -> datetime:
-    """Compute the next datetime matching the recurrence rule, strictly after `after`.
-
-    Supported formats:
-    - "daily"
-    - "weekly:MON" (or any 3-letter weekday code, uppercase)
-    - "monthly:N" where N is 1..31; if month has fewer days, last day is used.
-    """
     rule = rule.strip()
 
     if rule == "daily":
@@ -40,19 +46,18 @@ def next_occurrence(rule: str, after: datetime) -> datetime:
             raise InvalidRecurrenceError(f"Day must be 1..31: got {day}")
 
         year, month = after.year, after.month
-        # try this month first
-        last_day_this = monthrange(year, month)[1]
-        candidate_day = min(day, last_day_this)
-        candidate = after.replace(day=candidate_day)
+        candidate = _safe_replace(
+            after, year=year, month=month, day=min(day, monthrange(year, month)[1])
+        )
         if candidate > after:
             return candidate
-        # otherwise next month
         if month == 12:
             year += 1
             month = 1
         else:
             month += 1
-        last_day_next = monthrange(year, month)[1]
-        return after.replace(year=year, month=month, day=min(day, last_day_next))
+        return _safe_replace(
+            after, year=year, month=month, day=min(day, monthrange(year, month)[1])
+        )
 
     raise InvalidRecurrenceError(f"Unknown rule: {rule}")

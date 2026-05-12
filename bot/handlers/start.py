@@ -1,4 +1,4 @@
-from aiogram import Router
+from aiogram import F, Router
 from aiogram.filters import Command, CommandStart
 from aiogram.types import Message
 
@@ -19,6 +19,6 @@ async def on_start(message: Message, user: User) -> None:
 
 
 @router.message(Command("help"))
-@router.message(lambda m: m.text == "❓ Помощь")
+@router.message(F.text == "❓ Помощь")
 async def on_help(message: Message) -> None:
     await message.answer(strings.HELP, parse_mode="HTML")

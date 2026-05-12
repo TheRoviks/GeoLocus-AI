@@ -10,6 +10,9 @@ def parse_callback_id(data: str | None, prefix: str) -> int | None:
         return None
     tail = data[len(prefix):]
     try:
-        return int(tail)
+        value = int(tail)
     except ValueError:
         return None
+    if value < 1:
+        return None
+    return value

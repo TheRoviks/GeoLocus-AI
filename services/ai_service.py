@@ -1,3 +1,4 @@
+import asyncio
 import json
 from datetime import datetime
 from zoneinfo import ZoneInfo
@@ -59,6 +60,8 @@ class AIService:
     async def parse(self, text: str, user_tz: str, now: datetime | None = None) -> ParsedReminder:
         if not text.strip():
             raise AIParseError("Empty text")
+        if len(text) > 1000:
+            raise AIParseError("Text too long")
 
         tz = ZoneInfo(user_tz)
         local_now = (now or datetime.now(tz)).astimezone(tz)
@@ -91,6 +94,7 @@ class AIService:
                 log.error("deepseek_api_error", attempt=attempt, error=str(exc))
                 if attempt == 1:
                     raise AIParseError(f"DeepSeek API error: {exc}") from exc
+                await asyncio.sleep(1.5)
                 continue
 
             try:

@@ -1,5 +1,5 @@
 from contextlib import suppress
-from datetime import UTC, datetime
+from datetime import UTC, datetime, timedelta
 
 from aiogram import Bot
 from aiogram.exceptions import TelegramAPIError
@@ -8,13 +8,12 @@ from apscheduler.schedulers.asyncio import AsyncIOScheduler
 from apscheduler.triggers.date import DateTrigger
 from sqlalchemy.ext.asyncio import async_sessionmaker
 
+from bot.keyboards.inline import reminder_done_kb
 from core import strings
-from core.exceptions import InvalidRecurrenceError
 from core.logger import get_logger
 from models.reminder import Reminder
 from models.user import User
 from services.quiet_hours import adjust_for_quiet_hours
-from services.recurrence import next_occurrence
 from services.reminder_service import ReminderService
 
 log = get_logger(__name__)
@@ -39,9 +38,17 @@ class SchedulerService:
         async with self._sf() as session:
             svc = ReminderService(session)
             due = await svc.get_due_for_restore()
+            now = datetime.now(UTC)
+            overdue_idx = 0
             for r in due:
-                self._add_job(r.id, r.remind_at)
-            log.info("scheduler_started", restored=len(due))
+                when = r.remind_at
+                if when.tzinfo is None:
+                    when = when.replace(tzinfo=UTC)
+                if when < now:
+                    when = now + timedelta(milliseconds=500 * overdue_idx)
+                    overdue_idx += 1
+                self._add_job(r.id, when)
+            log.info("scheduler_started", restored=len(due), overdue=overdue_idx)
 
     async def shutdown(self) -> None:
         self._scheduler.shutdown(wait=False)
@@ -60,6 +67,9 @@ class SchedulerService:
     def _add_job(self, reminder_id: int, when: datetime) -> None:
         if when.tzinfo is None:
             when = when.replace(tzinfo=UTC)
+        now = datetime.now(UTC)
+        if when < now:
+            when = now
         self._scheduler.add_job(
             self._fire,
             trigger=DateTrigger(run_date=when),
@@ -79,6 +89,28 @@ class SchedulerService:
 
             user = await session.get(User, rem.user_id)
             if user is None or not user.is_active:
+                log.warning(
+                    "fire_user_inactive",
+                    id=reminder_id,
+                    user_id=rem.user_id,
+                    user_missing=user is None,
+                )
+                # For recurring reminders we must keep the series alive even
+                # while the user is inactive (blocked the bot, etc.), so that
+                # reactivation does not silently drop their schedule. Spawn
+                # the next occurrence and let the scheduler hold it.
+                next_rem_id: int | None = None
+                next_rem_when: datetime | None = None
+                if user is not None:
+                    new_rem = await svc.create_next_recurrence(rem)
+                    if new_rem is not None:
+                        next_rem_id = new_rem.id
+                        next_rem_when = new_rem.remind_at
+                rem.is_done = True
+                await session.commit()
+                self.cancel(reminder_id)
+                if next_rem_id is not None and next_rem_when is not None:
+                    self._add_job(next_rem_id, next_rem_when)
                 return
 
             now_utc = datetime.now(UTC)
@@ -97,7 +129,7 @@ class SchedulerService:
                 await self._bot.send_message(
                     chat_id=user.telegram_id,
                     text=strings.REMINDER_FIRED.format(parsed_text=rem.parsed_text),
-                    reply_markup=_done_kb(reminder_id),
+                    reply_markup=reminder_done_kb(reminder_id),
                 )
             except TelegramAPIError as exc:
                 log.error("fire_send_failed", id=reminder_id, error=str(exc))
@@ -107,32 +139,11 @@ class SchedulerService:
             rem.is_done = True
             await session.commit()
 
-            if rem.is_recurring and rem.recurrence_rule:
-                try:
-                    next_at = next_occurrence(rem.recurrence_rule, rem.remind_at)
-                except InvalidRecurrenceError as exc:
-                    log.error("bad_recurrence", id=reminder_id, error=str(exc))
-                    return
-                new_rem = await svc.create(
-                    user_id=rem.user_id,
-                    text=rem.text,
-                    parsed_text=rem.parsed_text,
-                    remind_at=next_at,
-                    is_recurring=True,
-                    recurrence_rule=rem.recurrence_rule,
-                )
+            new_rem = await svc.create_next_recurrence(rem)
+            if new_rem is not None:
                 self._add_job(new_rem.id, new_rem.remind_at)
-                log.info("recurring_next_scheduled", id=new_rem.id, at=next_at.isoformat())
-
-
-def _done_kb(reminder_id: int):  # type: ignore[no-untyped-def]
-    from aiogram.types import InlineKeyboardButton, InlineKeyboardMarkup
-
-    return InlineKeyboardMarkup(
-        inline_keyboard=[
-            [
-                InlineKeyboardButton(text="✅ Готово", callback_data=f"rem:done:{reminder_id}"),
-                InlineKeyboardButton(text="⏰ +10 мин", callback_data=f"rem:snooze:{reminder_id}"),
-            ]
-        ]
-    )
+                log.info(
+                    "recurring_next_scheduled",
+                    id=new_rem.id,
+                    at=new_rem.remind_at.isoformat(),
+                )

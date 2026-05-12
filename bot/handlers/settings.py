@@ -7,9 +7,11 @@ from sqlalchemy.ext.asyncio import async_sessionmaker
 
 from bot.keyboards.inline import quiet_kb, settings_menu, tz_kb
 from core import strings
+from core.logger import get_logger
 from models.user import User
 from services.user_service import UserService
 
+log = get_logger(__name__)
 router = Router(name="settings")
 
 
@@ -66,10 +68,17 @@ async def on_set_quiet(
     if val == "off":
         start, end = time(0, 0), time(0, 0)
     else:
-        s, e = val.split("-")
-        sh, sm = map(int, s.split(":"))
-        eh, em = map(int, e.split(":"))
-        start, end = time(sh, sm), time(eh, em)
+        try:
+            s, e = val.split("-", 1)
+            sh, sm = map(int, s.split(":", 1))
+            eh, em = map(int, e.split(":", 1))
+            if not (0 <= sh <= 23 and 0 <= sm <= 59 and 0 <= eh <= 23 and 0 <= em <= 59):
+                raise ValueError("out of range")
+            start, end = time(sh, sm), time(eh, em)
+        except (ValueError, TypeError) as exc:
+            log.warning("quiet_hours_invalid_payload", val=val, error=str(exc))
+            await cb.answer(strings.CALLBACK_INVALID, show_alert=True)
+            return
 
     async with session_factory() as session:
         svc = UserService(session)

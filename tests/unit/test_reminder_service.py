@@ -5,8 +5,6 @@ import pytest
 from core.exceptions import ReminderNotFoundError
 from services.reminder_service import ReminderService
 
-UTC = UTC
-
 
 @pytest.mark.asyncio
 async def test_create_and_get(session, user):
@@ -102,17 +100,43 @@ async def test_stats(session, user):
 
 
 @pytest.mark.asyncio
+async def test_create_next_recurrence_daily(session, user):
+    svc = ReminderService(session)
+    rem = await svc.create(
+        user_id=user.id, text="x", parsed_text="x",
+        remind_at=datetime(2030, 1, 1, 10, 0, tzinfo=UTC),
+        is_recurring=True, recurrence_rule="daily",
+    )
+    next_rem = await svc.create_next_recurrence(rem)
+    assert next_rem is not None
+    assert next_rem.remind_at.day == 2
+
+
+@pytest.mark.asyncio
+async def test_create_next_recurrence_non_recurring(session, user):
+    svc = ReminderService(session)
+    rem = await svc.create(
+        user_id=user.id, text="x", parsed_text="x",
+        remind_at=datetime(2030, 1, 1, tzinfo=UTC),
+    )
+    assert await svc.create_next_recurrence(rem) is None
+
+
+@pytest.mark.asyncio
 async def test_get_due_for_restore_filters(session, user):
     svc = ReminderService(session)
     past = datetime.now(UTC) - timedelta(days=1)
-    future = datetime.now(UTC) + timedelta(days=1)
+    future = datetime.now(UTC) + timedelta(hours=12)
+    far_future = datetime.now(UTC) + timedelta(hours=48)
     p = await svc.create(user_id=user.id, text="p", parsed_text="p", remind_at=past)
     f = await svc.create(user_id=user.id, text="f", parsed_text="f", remind_at=future)
     d = await svc.create(user_id=user.id, text="d", parsed_text="d", remind_at=future)
+    far = await svc.create(user_id=user.id, text="far", parsed_text="far", remind_at=far_future)
     await svc.soft_delete(d.id, user.id)
 
     due = await svc.get_due_for_restore()
     ids = {r.id for r in due}
     assert f.id in ids
-    assert p.id not in ids
+    assert p.id in ids  # past reminders now restored too (BUG-002 fix)
     assert d.id not in ids
+    assert far.id not in ids  # beyond 24h horizon — not restored
